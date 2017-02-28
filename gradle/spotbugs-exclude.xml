@@ -659,6 +659,7 @@ For a detailed description of spotbugs bug categories, see https://spotbugs.read
             <Class name="kafka.server.metadata.DefaultUserEntity"/>
             <Class name="org.apache.kafka.connect.runtime.SinkConnectorConfig"/>
             <Class name="org.apache.kafka.connect.runtime.SourceConnectorConfig"/>
+            <Class name="kafka.network.DataPlaneAcceptor"/>
         </Or>
         <Bug pattern="HSM_HIDING_METHOD"/>
     </Match>

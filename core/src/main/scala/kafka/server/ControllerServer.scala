@@ -41,7 +41,7 @@ import org.apache.kafka.metadata.bootstrap.BootstrapMetadata
 import org.apache.kafka.metadata.publisher.{AclPublisher, DelegationTokenPublisher, DynamicClientQuotaPublisher, DynamicTopicClusterQuotaPublisher, FeaturesPublisher, ScramPublisher}
 import org.apache.kafka.raft.QuorumConfig
 import org.apache.kafka.security.{CredentialProvider, DelegationTokenManager}
-import org.apache.kafka.server.{ProcessRole, SimpleApiVersionManager}
+import org.apache.kafka.server.{HyperControllerPlugin, ProcessRole, SimpleApiVersionManager}
 import org.apache.kafka.server.authorizer.Authorizer
 import org.apache.kafka.server.config.ServerLogConfigs.{ALTER_CONFIG_POLICY_CLASS_NAME_CONFIG, CREATE_TOPIC_POLICY_CLASS_NAME_CONFIG}
 import org.apache.kafka.server.common.{ApiMessageAndVersion, KRaftVersion, NodeToControllerChannelManager}
@@ -111,6 +111,9 @@ class ControllerServer(
   @volatile var incarnationId: Uuid = _
   @volatile var registrationManager: ControllerRegistrationManager = _
   @volatile var registrationChannelManager: NodeToControllerChannelManager = _
+
+  // HyperPlugin
+  val eventStreamsPlugin: Option[HyperControllerPlugin] = Option(config.getConfiguredInstance(HyperControllerPlugin.PROP_NAME, classOf[HyperControllerPlugin]))
 
   private def maybeChangeStatus(from: ProcessStatus, to: ProcessStatus): Boolean = {
     lock.lock()
@@ -297,6 +300,11 @@ class ControllerServer(
         "controller"
       )
 
+      // HyperPlugin
+      eventStreamsPlugin.foreach(esp => {
+        esp.setControllerApis(controllerApis, metrics)
+      })
+
       // Set up the metadata cache publisher.
       metadataPublishers.add(metadataCachePublisher)
 
@@ -469,6 +477,10 @@ class ControllerServer(
         controller.beginShutdown()
       if (socketServer != null)
         Utils.swallow(this.logger.underlying, () => socketServer.shutdown())
+
+      // HyperPlugin
+      eventStreamsPlugin.foreach(esp => Utils.swallow(this.logger.underlying, () => esp.close()))
+
       if (controllerApisHandlerPool != null)
         Utils.swallow(this.logger.underlying, () => controllerApisHandlerPool.shutdown())
       if (controllerApis != null)

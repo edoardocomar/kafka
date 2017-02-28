@@ -378,4 +378,7 @@
     <suppress checks="FinalLocalVariable" files="."/>
     <suppress checks="FinalParameters" files="."/>
 
+    <!-- HyperPlugin -->
+    <suppress checks="(ImportControl)" files="RequestContext.java"/>
+    <suppress checks="(Header|ImportControl)" files="Hyper.*\.java$"/>
 </suppressions>

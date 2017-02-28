@@ -26,6 +26,7 @@ import org.apache.kafka.common.protocol.ByteBufferAccessor;
 import org.apache.kafka.common.security.auth.KafkaPrincipal;
 import org.apache.kafka.common.security.auth.KafkaPrincipalSerde;
 import org.apache.kafka.common.security.auth.SecurityProtocol;
+import org.apache.kafka.server.HyperBrokerPlugin;
 import org.apache.kafka.server.authorizer.AuthorizableRequestContext;
 
 import java.net.InetAddress;
@@ -45,6 +46,7 @@ public class RequestContext implements AuthorizableRequestContext {
     public final ClientInformation clientInformation;
     public final boolean fromPrivilegedListener;
     public final Optional<KafkaPrincipalSerde> principalSerde;
+    private final Optional<HyperBrokerPlugin> hyperplugin;
 
     public RequestContext(RequestHeader header,
                           String connectionId,
@@ -63,6 +65,7 @@ public class RequestContext implements AuthorizableRequestContext {
             securityProtocol,
             clientInformation,
             fromPrivilegedListener,
+            Optional.empty(),
             Optional.empty());
     }
 
@@ -84,6 +87,7 @@ public class RequestContext implements AuthorizableRequestContext {
             securityProtocol,
             clientInformation,
             fromPrivilegedListener,
+            Optional.empty(),
             Optional.empty());
     }
 
@@ -96,7 +100,8 @@ public class RequestContext implements AuthorizableRequestContext {
                           SecurityProtocol securityProtocol,
                           ClientInformation clientInformation,
                           boolean fromPrivilegedListener,
-                          Optional<KafkaPrincipalSerde> principalSerde) {
+                          Optional<KafkaPrincipalSerde> principalSerde,
+                          Optional<HyperBrokerPlugin> hyperplugin) {
         this.header = header;
         this.connectionId = connectionId;
         this.clientAddress = clientAddress;
@@ -107,6 +112,30 @@ public class RequestContext implements AuthorizableRequestContext {
         this.clientInformation = clientInformation;
         this.fromPrivilegedListener = fromPrivilegedListener;
         this.principalSerde = principalSerde;
+        this.hyperplugin = hyperplugin;
+    }
+
+    public RequestContext(RequestHeader header,
+                          String connectionId,
+                          InetAddress clientAddress,
+                          Optional<Integer> clientPort,
+                          KafkaPrincipal principal,
+                          ListenerName listenerName,
+                          SecurityProtocol securityProtocol,
+                          ClientInformation clientInformation,
+                          boolean fromPrivilegedListener,
+                          Optional<KafkaPrincipalSerde> principalSerde) {
+        this(header,
+            connectionId,
+            clientAddress,
+            clientPort,
+            principal,
+            listenerName,
+            securityProtocol,
+            clientInformation,
+            fromPrivilegedListener,
+            principalSerde,
+            Optional.empty());
     }
 
     public RequestAndSize parseRequest(ByteBuffer buffer) {
@@ -118,7 +147,14 @@ public class RequestContext implements AuthorizableRequestContext {
             ApiKeys apiKey = header.apiKey();
             try {
                 short apiVersion = header.apiVersion();
-                return AbstractRequest.parseRequest(apiKey, apiVersion, new ByteBufferAccessor(buffer));
+                RequestAndSize requestAndSize = AbstractRequest.parseRequest(apiKey, apiVersion, new ByteBufferAccessor(buffer));
+                if (hyperplugin.isPresent()) {
+                    AbstractRequest request = hyperplugin.get().interceptRequest(principal, header, requestAndSize.request);
+                    // MH: Note that the size may have changed with interception, but we decided to keep the original size
+                    // as recomputing it may be expensive - and size is used for metrics/quotas
+                    requestAndSize = new RequestAndSize(request, requestAndSize.size);
+                }
+                return requestAndSize;
             } catch (Throwable ex) {
                 throw new InvalidRequestException("Error getting request for apiKey: " + apiKey +
                         ", apiVersion: " + header.apiVersion() +
@@ -134,6 +170,9 @@ public class RequestContext implements AuthorizableRequestContext {
      * over the network.
      */
     public Send buildResponseSend(AbstractResponse body) {
+        if (hyperplugin.isPresent()) {
+            body = hyperplugin.get().interceptResponse(principal, header, body);
+        }
         return body.toSend(header.toResponseHeader(), apiVersion());
     }
 
@@ -220,4 +259,9 @@ public class RequestContext implements AuthorizableRequestContext {
             ", principalSerde=" + principalSerde +
             ')';
     }
+
+    public Optional<HyperBrokerPlugin> hyperplugin() {
+        return hyperplugin;
+    }
+
 }

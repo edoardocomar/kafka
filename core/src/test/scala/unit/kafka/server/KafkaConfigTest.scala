@@ -50,6 +50,8 @@ import org.junit.jupiter.api.function.Executable
 import scala.jdk.CollectionConverters._
 import scala.util.Using
 
+import org.apache.kafka.server.{HyperControllerPlugin, HyperBrokerPlugin}
+
 class KafkaConfigTest {
 
   def createDefaultConfig(): Properties = {
@@ -1079,6 +1081,10 @@ class KafkaConfigTest {
 
         /** Share coordinator configs */
         case ShareCoordinatorConfig.APPEND_LINGER_MS_CONFIG => assertPropertyInvalid(baseProperties, name, "not_a_number", -2, -0.5)
+
+        // HyperPlugin Additional config
+        case HyperBrokerPlugin.PROP_NAME => // ignore string
+        case HyperControllerPlugin.PROP_NAME => // ignore string
 
         case _ => assertPropertyInvalid(baseProperties, name, "not_a_number", "-1")
       }

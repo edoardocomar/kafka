@@ -20,6 +20,8 @@ import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.common.config.TopicConfig;
 import org.apache.kafka.common.record.internal.CompressionType;
+import org.apache.kafka.server.HyperControllerPlugin;
+import org.apache.kafka.server.HyperBrokerPlugin;
 import org.apache.kafka.server.authorizer.Authorizer;
 import org.apache.kafka.server.record.BrokerCompressionType;
 
@@ -32,6 +34,7 @@ import static org.apache.kafka.common.config.ConfigDef.Importance.LOW;
 import static org.apache.kafka.common.config.ConfigDef.Importance.MEDIUM;
 import static org.apache.kafka.common.config.ConfigDef.Range.atLeast;
 import static org.apache.kafka.common.config.ConfigDef.Type.BOOLEAN;
+import static org.apache.kafka.common.config.ConfigDef.Type.CLASS;
 import static org.apache.kafka.common.config.ConfigDef.Type.INT;
 import static org.apache.kafka.common.config.ConfigDef.Type.LIST;
 import static org.apache.kafka.common.config.ConfigDef.Type.LONG;
@@ -157,5 +160,8 @@ public class ServerConfigs {
             // This indicates whether unreleased APIs should be advertised by this node.
             .defineInternal(UNSTABLE_API_VERSIONS_ENABLE_CONFIG, BOOLEAN, false, HIGH)
             // This indicates whether unreleased MetadataVersions should be enabled on this node.
-            .defineInternal(UNSTABLE_FEATURE_VERSIONS_ENABLE_CONFIG, BOOLEAN, false, HIGH);
+            .defineInternal(UNSTABLE_FEATURE_VERSIONS_ENABLE_CONFIG, BOOLEAN, false, HIGH)
+            // HyperPlugin
+            .defineInternal(HyperBrokerPlugin.PROP_NAME, CLASS, null, HIGH)
+            .defineInternal(HyperControllerPlugin.PROP_NAME, CLASS, null, HIGH);
 }

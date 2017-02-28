@@ -45,6 +45,7 @@ import org.apache.kafka.common.{Endpoint, KafkaException, MetricName, Reconfigur
 import org.apache.kafka.network.{ConnectionQuotaEntity, ConnectionThrottledException, SocketServer => JSocketServer, SocketServerConfigs, TooManyConnectionsException}
 import org.apache.kafka.security.CredentialProvider
 import org.apache.kafka.server.{ApiVersionManager, ServerSocketFactory}
+import org.apache.kafka.server.HyperBrokerPlugin
 import org.apache.kafka.server.config.QuotaConfig
 import org.apache.kafka.server.metrics.KafkaMetricsGroup
 import org.apache.kafka.server.network.ConnectionDisconnectListener
@@ -56,6 +57,7 @@ import scala.collection._
 import scala.collection.mutable.ArrayBuffer
 import scala.jdk.CollectionConverters._
 import scala.util.control.ControlThrowable
+import scala.jdk.OptionConverters._
 
 /**
  * Handles new connections, requests and responses to and from broker.
@@ -75,7 +77,8 @@ class SocketServer(
   val credentialProvider: CredentialProvider,
   val apiVersionManager: ApiVersionManager,
   val socketFactory: ServerSocketFactory = ServerSocketFactory.INSTANCE,
-  val connectionDisconnectListeners: Seq[ConnectionDisconnectListener] = Seq.empty
+  val connectionDisconnectListeners: Seq[ConnectionDisconnectListener] = Seq.empty,
+  val hyperplugin: Option[HyperBrokerPlugin] = None
 ) extends Logging with BrokerReconfigurable {
   // Changing the package or class name may cause incompatibility with existing code and metrics configuration
   private val metricsPackage = "kafka.network"
@@ -227,8 +230,8 @@ class SocketServer(
 
   private def endpoints = config.listeners.map(l => ListenerName.normalised(l.listener) -> l).toMap
 
-  protected def createDataPlaneAcceptor(endPoint: Endpoint, isPrivilegedListener: Boolean, requestChannel: RequestChannel): DataPlaneAcceptor = {
-    new DataPlaneAcceptor(this, endPoint, config, nodeId, connectionQuotas, time, isPrivilegedListener, requestChannel, metrics, credentialProvider, logContext, memoryPool, apiVersionManager)
+  protected def createDataPlaneAcceptor(endpoint: Endpoint, isPrivilegedListener: Boolean, requestChannel: RequestChannel): DataPlaneAcceptor = {
+    new DataPlaneAcceptor(this, endpoint, config, nodeId, connectionQuotas, time, isPrivilegedListener, requestChannel, metrics, credentialProvider, logContext, memoryPool, apiVersionManager, hyperplugin)
   }
 
   /**
@@ -257,6 +260,7 @@ class SocketServer(
       stopProcessingRequests()
       dataPlaneRequestChannel.shutdown()
       connectionQuotas.close()
+      hyperplugin.foreach(i => Utils.swallow(this.logger.underlying, () => i.close()))
     }
     info("Shutdown completed")
   }
@@ -369,7 +373,8 @@ class DataPlaneAcceptor(socketServer: SocketServer,
                         credentialProvider: CredentialProvider,
                         logContext: LogContext,
                         memoryPool: MemoryPool,
-                        apiVersionManager: ApiVersionManager)
+                        apiVersionManager: ApiVersionManager,
+                        hyperplugin : Option[HyperBrokerPlugin] = None)
   extends Acceptor(socketServer,
                    endPoint,
                    config,
@@ -382,7 +387,8 @@ class DataPlaneAcceptor(socketServer: SocketServer,
                    credentialProvider,
                    logContext,
                    memoryPool,
-                   apiVersionManager) with ListenerReconfigurable {
+                   apiVersionManager,
+                   hyperplugin) with ListenerReconfigurable {
 
   /**
    * Returns the listener name associated with this reconfigurable. Listener-specific
@@ -467,7 +473,8 @@ private[kafka] abstract class Acceptor(val socketServer: SocketServer,
                                        credentialProvider: CredentialProvider,
                                        logContext: LogContext,
                                        memoryPool: MemoryPool,
-                                       apiVersionManager: ApiVersionManager)
+                                       apiVersionManager: ApiVersionManager,
+                                       val hyperplugin : Option[HyperBrokerPlugin] = None)
   extends Runnable with Logging {
   val shouldRun = new AtomicBoolean(true)
 
@@ -762,7 +769,8 @@ private[kafka] abstract class Acceptor(val socketServer: SocketServer,
                   isPrivilegedListener,
                   apiVersionManager,
                   name,
-                  connectionDisconnectListeners)
+                  connectionDisconnectListeners,
+                  hyperplugin=hyperplugin)
   }
 }
 
@@ -813,7 +821,8 @@ private[kafka] class Processor(
   isPrivilegedListener: Boolean,
   apiVersionManager: ApiVersionManager,
   threadName: String,
-  connectionDisconnectListeners: Seq[ConnectionDisconnectListener]
+  connectionDisconnectListeners: Seq[ConnectionDisconnectListener],
+  hyperplugin: Option[HyperBrokerPlugin] = None
 ) extends Runnable with Logging {
   private val metricsPackage = "kafka.network"
   private val metricsClassName = "Processor"
@@ -1017,9 +1026,14 @@ private[kafka] class Processor(
                 expiredConnectionsKilledCount.record(null, 1, 0)
               } else {
                 val connectionId = receive.source
-                val context = new RequestContext(header, connectionId, channel.socketAddress, Optional.of(channel.socketPort()),
+                val socketAddress = hyperplugin match {
+                  case Some(i) => i.interceptClientAddress(channel.principal, channel.socketAddress)
+                  case None => channel.socketAddress
+                }
+                val context = new RequestContext(header, connectionId, socketAddress, Optional.of(channel.socketPort()),
                   channel.principal, listenerName, securityProtocol, channel.channelMetadataRegistry.clientInformation,
-                  isPrivilegedListener, channel.principalSerde)
+                  isPrivilegedListener, channel.principalSerde,
+                  hyperplugin.toJava)
 
                 val req = new RequestChannel.Request(processor = id, context = context,
                   startTimeNanos = nowNanos, memoryPool, receive.payload, requestChannel.metrics, None)

@@ -57,6 +57,7 @@ import org.apache.kafka.server.util.timer.{SystemTimer, SystemTimerReaper}
 import org.apache.kafka.server.util.{Deadline, FutureUtils, KafkaScheduler}
 import org.apache.kafka.server.{AssignmentsManager, BrokerFeatures, BrokerLifecycleManager, ClientMetricsManager, DefaultApiVersionManager, DelayedActionQueue, FetchManager, FetchSessionCacheShard, KRaftTopicCreator, NodeToControllerChannelManagerImpl, ProcessRole, RaftControllerNodeProvider}
 import org.apache.kafka.server.transaction.AddPartitionsToTxnManager
+import org.apache.kafka.server.HyperBrokerPlugin
 import org.apache.kafka.storage.internals.log.LogDirFailureChannel
 import org.apache.kafka.storage.log.metrics.BrokerTopicStats
 
@@ -68,7 +69,6 @@ import java.util.concurrent.{CompletableFuture, ExecutionException, TimeUnit, Ti
 import scala.collection.Map
 import scala.jdk.CollectionConverters._
 import scala.jdk.OptionConverters.RichOption
-
 
 /**
  * A Kafka broker that runs in KRaft (Kafka Raft) mode.
@@ -266,6 +266,9 @@ class BrokerServer(
         shareFetchSessionCache.connectionDisconnectListener()
       )
 
+      // HyperPlugin
+      val hyperplugin = Option(config.getConfiguredInstance(HyperBrokerPlugin.PROP_NAME, classOf[HyperBrokerPlugin]))
+
       // Create and start the socket server acceptor threads so that the bound port is known.
       // Delay starting processors until the end of the initialization sequence to ensure
       // that credentials have been loaded before processing authentications.
@@ -275,7 +278,8 @@ class BrokerServer(
         credentialProvider,
         apiVersionManager,
         sharedServer.socketFactory,
-        connectionDisconnectListeners)
+        connectionDisconnectListeners,
+        hyperplugin)
 
       clientQuotaMetadataManager = new ClientQuotaMetadataManager(quotaManagers, socketServer.connectionQuotas)
 
@@ -471,6 +475,12 @@ class BrokerServer(
         apiVersionManager = apiVersionManager,
         clientMetricsManager = clientMetricsManager,
         groupConfigManager = groupConfigManager)
+
+      // HyperPlugin
+      hyperplugin.foreach( i => {
+        i.setKafkaApis(dataPlaneRequestProcessor)
+        dataPlaneRequestProcessor.hyperplugin = Option(i)
+      })
 
       dataPlaneRequestHandlerPool = sharedServer.requestHandlerPoolFactory.createPool(
         config.nodeId,

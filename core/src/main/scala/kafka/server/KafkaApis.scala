@@ -62,6 +62,7 @@ import org.apache.kafka.coordinator.share.ShareCoordinator
 import org.apache.kafka.metadata.{ConfigRepository, MetadataCache}
 import org.apache.kafka.security.DelegationTokenManager
 import org.apache.kafka.server.{ApiVersionManager, ClientMetricsManager, FetchManager, ProcessRole}
+import org.apache.kafka.server.HyperBrokerPlugin
 import org.apache.kafka.server.authorizer._
 import org.apache.kafka.server.common.{GroupVersion, RequestLocal, ShareVersion, StreamsVersion, TransactionVersion}
 import org.apache.kafka.server.share.context.ShareFetchContext
@@ -121,6 +122,10 @@ class KafkaApis(val requestChannel: RequestChannel,
   val describeTopicPartitionsRequestHandler = new DescribeTopicPartitionsRequestHandler(
     metadataCache, authHelper, config)
 
+  // HyperPlugin
+  // using a writable field instead of adding a parameter to constructor makes the change easier to merge while KafkaApis evolve
+  var hyperplugin : Option[HyperBrokerPlugin] = Option.empty
+
   def close(): Unit = {
     aclApis.close()
     info("Shutdown complete.")
@@ -133,8 +138,8 @@ class KafkaApis(val requestChannel: RequestChannel,
         case None => handleInvalidVersionsDuringForwarding(request)
       }
     }
-
-    forwardingManager.forwardRequest(request, responseCallback)
+    // HyperPlugin: forcing reserialization of request, to allow sending hyperplugin-modified request to controller
+    forwardingManager.forwardRequest(request, request.body[AbstractRequest], responseCallback)
   }
 
   private def handleInvalidVersionsDuringForwarding(request: RequestChannel.Request): Unit = {
@@ -152,6 +157,11 @@ class KafkaApis(val requestChannel: RequestChannel,
       error(s"Unexpected error handling request ${request.requestDesc(true)} " +
         s"with context ${request.context}", e)
       requestHelper.handleError(request, e)
+    }
+
+    hyperplugin.map{ i =>
+      val response : java.util.Optional[AbstractResponse] = i.bypassApi(request.context.principal(), request.header, request.body[AbstractRequest])
+      response.map(r => return requestHelper.sendMaybeThrottle(request, r))
     }
 
     try {
