@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.common.security.authenticator;
 
+import org.apache.kafka.common.Node;
 import org.apache.kafka.common.config.SaslConfigs;
 import org.apache.kafka.common.config.internals.BrokerSecurityConfigs;
 import org.apache.kafka.common.errors.SaslAuthenticationException;
@@ -40,7 +41,6 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -106,12 +106,12 @@ public class SaslAuthenticatorFailureDelayTest {
      */
     @Test
     public void testInvalidPasswordSaslPlain() throws Exception {
-        String node = "0";
         SecurityProtocol securityProtocol = SecurityProtocol.SASL_SSL;
         TestJaasConfig jaasConfig = configureMechanisms("PLAIN", Arrays.asList("PLAIN"));
         jaasConfig.setClientOptions("PLAIN", TestJaasConfig.USERNAME, "invalidpassword");
 
         server = createEchoServer(securityProtocol);
+        Node node = new Node(0, "127.0.0.1", server.port());
         createAndCheckClientAuthenticationFailure(securityProtocol, node, "PLAIN",
                 "Authentication failed: Invalid username or password");
         server.verifyAuthenticationMetrics(0, 1);
@@ -122,12 +122,12 @@ public class SaslAuthenticatorFailureDelayTest {
      */
     @Test
     public void testClientConnectionClose() throws Exception {
-        String node = "0";
         SecurityProtocol securityProtocol = SecurityProtocol.SASL_SSL;
         TestJaasConfig jaasConfig = configureMechanisms("PLAIN", Arrays.asList("PLAIN"));
         jaasConfig.setClientOptions("PLAIN", TestJaasConfig.USERNAME, "invalidpassword");
 
         server = createEchoServer(securityProtocol);
+        Node node = new Node(0, "127.0.0.1", server.port());
         createClientConnection(securityProtocol, node);
 
         Map<?, ?> delayedClosingChannels = NetworkTestUtils.delayedClosingChannels(server.selector());
@@ -160,7 +160,7 @@ public class SaslAuthenticatorFailureDelayTest {
 
     private void poll(Selector selector) {
         try {
-            selector.poll(50);
+            selector.poll(50L);
         } catch (IOException e) {
             Assert.fail("Caught unexpected exception " + e);
         }
@@ -201,13 +201,12 @@ public class SaslAuthenticatorFailureDelayTest {
                     new TestSecurityConfig(saslServerConfigs), credentialCache, time);
     }
 
-    private void createClientConnection(SecurityProtocol securityProtocol, String node) throws Exception {
+    private void createClientConnection(SecurityProtocol securityProtocol, Node node) throws Exception {
         createSelector(securityProtocol, saslClientConfigs);
-        InetSocketAddress addr = new InetSocketAddress("127.0.0.1", server.port());
-        selector.connect(node, addr, BUFFER_SIZE, BUFFER_SIZE);
+        selector.connect(node, BUFFER_SIZE, BUFFER_SIZE);
     }
 
-    private void createAndCheckClientAuthenticationFailure(SecurityProtocol securityProtocol, String node,
+    private void createAndCheckClientAuthenticationFailure(SecurityProtocol securityProtocol, Node node,
                                                            String mechanism, String expectedErrorMessage) throws Exception {
         ChannelState finalState = createAndCheckClientConnectionFailure(securityProtocol, node);
         Exception exception = finalState.exception();
@@ -217,10 +216,10 @@ public class SaslAuthenticatorFailureDelayTest {
         assertEquals(expectedErrorMessage, exception.getMessage());
     }
 
-    private ChannelState createAndCheckClientConnectionFailure(SecurityProtocol securityProtocol, String node)
+    private ChannelState createAndCheckClientConnectionFailure(SecurityProtocol securityProtocol, Node node)
             throws Exception {
         createClientConnection(securityProtocol, node);
-        ChannelState finalState = NetworkTestUtils.waitForChannelClose(selector, node,
+        ChannelState finalState = NetworkTestUtils.waitForChannelClose(selector, node.idString(),
                 ChannelState.State.AUTHENTICATION_FAILED, time);
         selector.close();
         selector = null;

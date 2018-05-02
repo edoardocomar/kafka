@@ -24,7 +24,7 @@ import kafka.utils.Logging
 import org.apache.kafka.clients._
 import org.apache.kafka.clients.consumer.internals.{ConsumerNetworkClient, ConsumerProtocol, RequestFuture}
 import org.apache.kafka.common.config.ConfigDef.{Importance, Type}
-import org.apache.kafka.common.config.{AbstractConfig, ConfigDef}
+import org.apache.kafka.common.config.{AbstractConfig, ConfigDef, ClientDnsLookup}
 import org.apache.kafka.common.errors.{AuthenticationException, TimeoutException}
 import org.apache.kafka.common.metrics.Metrics
 import org.apache.kafka.common.network.Selector
@@ -440,7 +440,8 @@ object AdminClient {
       time,
       "admin",
       channelBuilder,
-      new LogContext(String.format("[Producer clientId=%s] ", clientId)))
+      new LogContext(String.format("[Producer clientId=%s] ", clientId)),
+      ClientDnsLookup.DEFAULT)
 
     val networkClient = new NetworkClient(
       selector,

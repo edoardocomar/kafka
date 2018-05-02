@@ -32,6 +32,7 @@ import kafka.security.CredentialProvider
 import kafka.server.KafkaConfig
 import kafka.utils._
 import org.apache.kafka.common.{KafkaException, Reconfigurable}
+import org.apache.kafka.common.config.ClientDnsLookup
 import org.apache.kafka.common.memory.{MemoryPool, SimpleMemoryPool}
 import org.apache.kafka.common.metrics._
 import org.apache.kafka.common.metrics.stats.Meter
@@ -574,7 +575,8 @@ private[kafka] class Processor(val id: Int,
       true,
       channelBuilder,
       memoryPool,
-      logContext)
+      logContext, 
+      ClientDnsLookup.DEFAULT)
   }
 
   // Connection ids have the format `localAddr:localPort-remoteAddr:remotePort-index`. The index is a

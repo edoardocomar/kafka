@@ -37,6 +37,7 @@ import org.junit.Assert._
 import org.junit.{After, Before, Test}
 
 import scala.collection.JavaConverters._
+import org.apache.kafka.common.Node
 
 class GssapiAuthenticationTest extends IntegrationTestHarness with SaslSetup {
   override val serverCount = 1
@@ -147,20 +148,20 @@ class GssapiAuthenticationTest extends IntegrationTestHarness with SaslSetup {
     try {
       var actualSuccessfulAuths = 0
       while (actualSuccessfulAuths < numSuccessfulAuths) {
-        val nodeId = actualSuccessfulAuths.toString
-        selector.connect(nodeId, serverAddr, 1024, 1024)
+        val node = new Node(actualSuccessfulAuths, serverAddr.getHostName, serverAddr.getPort)
+        selector.connect(node, 1024, 1024)
         TestUtils.waitUntilTrue(() => {
           selector.poll(100)
-          val disconnectState = selector.disconnected().get(nodeId)
+          val disconnectState = selector.disconnected().get(node.idString)
           // Verify that disconnect state is not AUTHENTICATION_FAILED
           if (disconnectState != null)
             assertEquals(s"Authentication failed with exception ${disconnectState.exception()}",
               ChannelState.State.AUTHENTICATE, disconnectState.state())
-          selector.isChannelReady(nodeId) || disconnectState != null
+          selector.isChannelReady(node.idString) || disconnectState != null
         }, "Client not ready or disconnected within timeout")
-        if (selector.isChannelReady(nodeId))
+        if (selector.isChannelReady(node.idString))
           actualSuccessfulAuths += 1
-        selector.close(nodeId)
+        selector.close(node.idString)
       }
     } finally {
       selector.close()
@@ -175,11 +176,11 @@ class GssapiAuthenticationTest extends IntegrationTestHarness with SaslSetup {
    */
   private def verifyNonRetriableAuthenticationFailure(): Unit = {
     val selector = createSelector()
-    val nodeId = "1"
-    selector.connect(nodeId, serverAddr, 1024, 1024)
+    val node = new Node(1, serverAddr.getHostName, serverAddr.getPort)
+    selector.connect(node, 1024, 1024)
     TestUtils.waitUntilTrue(() => {
       selector.poll(100)
-      val disconnectState = selector.disconnected().get(nodeId)
+      val disconnectState = selector.disconnected().get(node.idString)
       if (disconnectState != null)
         assertEquals(ChannelState.State.AUTHENTICATION_FAILED, disconnectState.state())
       disconnectState != null
