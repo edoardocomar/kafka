@@ -18,6 +18,7 @@ package org.apache.kafka.common.network;
 
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.MetricName;
+import org.apache.kafka.common.Node;
 import org.apache.kafka.common.errors.AuthenticationException;
 import org.apache.kafka.common.memory.MemoryPool;
 import org.apache.kafka.common.metrics.Metrics;
@@ -32,12 +33,12 @@ import org.apache.kafka.common.utils.Time;
 import org.slf4j.Logger;
 
 import java.io.IOException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.channels.CancelledKeyException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.nio.channels.UnresolvedAddressException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -126,6 +127,7 @@ public class Selector implements Selectable, AutoCloseable {
     //indicates if the previous call to poll was able to make progress in reading already-buffered data.
     //this is used to prevent tight loops when memory is not available to read any more data
     private boolean madeReadProgressLastPoll = true;
+    private Map<String, NodeAddressIterator> addressIterators;
 
     /**
      * Create a new nioSelector
@@ -181,21 +183,7 @@ public class Selector implements Selectable, AutoCloseable {
         this.log = logContext.logger(Selector.class);
         this.failedAuthenticationDelayMs = failedAuthenticationDelayMs;
         this.delayedClosingChannels = (failedAuthenticationDelayMs > NO_FAILED_AUTHENTICATION_DELAY) ? new LinkedHashMap<String, DelayedAuthenticationFailureClose>() : null;
-    }
-
-    public Selector(int maxReceiveSize,
-                    long connectionMaxIdleMs,
-                    Metrics metrics,
-                    Time time,
-                    String metricGrpPrefix,
-                    Map<String, String> metricTags,
-                    boolean metricsPerConnection,
-                    boolean recordTimePerConnection,
-                    ChannelBuilder channelBuilder,
-                    MemoryPool memoryPool,
-                    LogContext logContext) {
-        this(maxReceiveSize, connectionMaxIdleMs, NO_FAILED_AUTHENTICATION_DELAY, metrics, time, metricGrpPrefix, metricTags,
-                metricsPerConnection, recordTimePerConnection, channelBuilder, memoryPool, logContext);
+        this.addressIterators = new HashMap<>();
     }
 
     public Selector(int maxReceiveSize,
@@ -246,17 +234,25 @@ public class Selector implements Selectable, AutoCloseable {
      * @throws IOException if DNS resolution fails on the hostname or if the broker is down
      */
     @Override
-    public void connect(String id, InetSocketAddress address, int sendBufferSize, int receiveBufferSize) throws IOException {
-        ensureNotRegistered(id);
+    public void connect(Node node, int sendBufferSize, int receiveBufferSize) throws IOException {
+        connectImpl(new NodeAddressIterator(node, sendBufferSize, receiveBufferSize));
+    }
+
+    void connectImpl(NodeAddressIterator addrIter) throws IOException {
+        checkRegistration(addrIter.id(), addrIter.isAtFirstAddress());
+
         SocketChannel socketChannel = SocketChannel.open();
         try {
-            configureSocketChannel(socketChannel, sendBufferSize, receiveBufferSize);
-            boolean connected = doConnect(socketChannel, address);
-            SelectionKey key = registerChannel(id, socketChannel, SelectionKey.OP_CONNECT);
+            configureSocketChannel(socketChannel, addrIter.sendBufferSize(), addrIter.receiveBufferSize());
+
+            boolean connected = doConnect(socketChannel, addrIter.currAddress(), addrIter.node().port());
+            SelectionKey key = registerChannel(addrIter.id(), socketChannel, SelectionKey.OP_CONNECT);
+            if (addrIter.isAtFirstAddress())
+                this.addressIterators.put(addrIter.id(), addrIter);
 
             if (connected) {
                 // OP_CONNECT won't trigger for immediately connected channels
-                log.debug("Immediately connected to node {}", id);
+                log.debug("Immediately connected to node {}", addrIter.id());
                 immediatelyConnectedKeys.add(key);
                 key.interestOps(0);
             }
@@ -268,12 +264,10 @@ public class Selector implements Selectable, AutoCloseable {
 
     // Visible to allow test cases to override. In particular, we use this to implement a blocking connect
     // in order to simulate "immediately connected" sockets.
-    protected boolean doConnect(SocketChannel channel, InetSocketAddress address) throws IOException {
-        try {
-            return channel.connect(address);
-        } catch (UnresolvedAddressException e) {
-            throw new IOException("Can't resolve address: " + address, e);
-        }
+    protected boolean doConnect(SocketChannel channel, InetAddress address, int port) throws IOException {
+        log.debug("Initiating connection to {}:{}", address, port);
+        InetSocketAddress inetSocketAddress = new InetSocketAddress(address, port);
+        return channel.connect(inetSocketAddress);
     }
 
     private void configureSocketChannel(SocketChannel socketChannel, int sendBufferSize, int receiveBufferSize)
@@ -303,16 +297,25 @@ public class Selector implements Selectable, AutoCloseable {
      * </p>
      */
     public void register(String id, SocketChannel socketChannel) throws IOException {
-        ensureNotRegistered(id);
+        checkRegistration(id, true);
         registerChannel(id, socketChannel, SelectionKey.OP_READ);
         this.sensors.connectionCreated.record();
     }
 
-    private void ensureNotRegistered(String id) {
-        if (this.channels.containsKey(id))
-            throw new IllegalStateException("There is already a connection for id " + id);
-        if (this.closingChannels.containsKey(id))
-            throw new IllegalStateException("There is already a connection for id " + id + " that is still being closed");
+    private void checkRegistration(String id, boolean firstConnect) {
+        if (firstConnect) {
+            if (this.channels.containsKey(id))
+                throw new IllegalStateException("There is already a connection for id " + id);
+            if (this.closingChannels.containsKey(id))
+                throw new IllegalStateException("There is already a connection for id " + id + " that is still being closed");
+            if (this.addressIterators.containsKey(id))
+                throw new IllegalStateException("There is already an addressIterator for id " + id);
+        } else {
+            if (!this.channels.containsKey(id))
+                throw new IllegalStateException("There is not a connection for id " + id);
+            if (!this.addressIterators.containsKey(id))
+                throw new IllegalStateException("There is not a addressIterator for id " + id);
+        }
     }
 
     private SelectionKey registerChannel(String id, SocketChannel socketChannel, int interestedOps) throws IOException {
@@ -510,7 +513,7 @@ public class Selector implements Selectable, AutoCloseable {
             try {
                 /* complete any connections that have finished their handshake (either normally or immediately) */
                 if (isImmediatelyConnected || key.isConnectable()) {
-                    if (channel.finishConnect()) {
+                    if (finishConnect(channel)) {
                         this.connected.add(channel.id());
                         this.sensors.connectionCreated.record();
                         SocketChannel socketChannel = (SocketChannel) key.channel();
@@ -584,6 +587,30 @@ public class Selector implements Selectable, AutoCloseable {
                 maybeRecordTimePerConnection(channel, channelStartTimeNanos);
             }
         }
+    }
+
+    // If the DNS resolution has provided multiple addresses for the node, they will be tried in order
+    // until one succeeds or they run out
+    private boolean finishConnect(KafkaChannel channel) throws IOException {
+        boolean hasFinished = false;
+        try {
+            hasFinished = channel.finishConnect();
+        } catch (IOException ioe) {
+
+            NodeAddressIterator channelMultiAddressConnect = addressIterators.get(channel.id());
+            if (channelMultiAddressConnect == null) {
+                throw new IllegalStateException("Attempt to retrieve addressIterator for an unregistered channel. Channel id " + channel.id() + " existing channels " + addressIterators.keySet());
+            }
+            if (channelMultiAddressConnect.hasMoreAddresses()) {
+                log.info("Failed connecting to {}, attempting to use next address for {}", channelMultiAddressConnect.currAddress(), channelMultiAddressConnect.id());
+                channelMultiAddressConnect.moveToNextAddress();
+                connectImpl(channelMultiAddressConnect);
+            } else {
+                log.warn("Failed connecting to {}, exhausted all addresses for {}", channelMultiAddressConnect.currAddress(), channelMultiAddressConnect.id());
+                throw ioe;
+            }
+        }
+        return hasFinished;
     }
 
     private Collection<SelectionKey> determineHandlingOrder(Set<SelectionKey> selectionKeys) {
@@ -841,6 +868,7 @@ public class Selector implements Selectable, AutoCloseable {
         this.sensors.connectionClosed.record();
         this.stagedReceives.remove(channel);
         this.explicitlyMutedChannels.remove(channel);
+        this.addressIterators.remove(channel.id());
         if (notifyDisconnect)
             this.disconnected.put(channel.id(), channel.state());
     }

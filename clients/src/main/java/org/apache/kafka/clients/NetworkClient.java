@@ -44,7 +44,6 @@ import org.apache.kafka.common.utils.Utils;
 import org.slf4j.Logger;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -861,8 +860,7 @@ public class NetworkClient implements KafkaClient {
         try {
             log.debug("Initiating connection to node {}", node);
             this.connectionStates.connecting(nodeConnectionId, now);
-            selector.connect(nodeConnectionId,
-                             new InetSocketAddress(node.host(), node.port()),
+            selector.connect(node,
                              this.socketSendBuffer,
                              this.socketReceiveBuffer);
         } catch (IOException e) {
