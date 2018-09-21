@@ -20,6 +20,7 @@ import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 
+import org.apache.kafka.clients.ClientDnsLookup;
 import org.apache.kafka.common.Node;
 
 /**
@@ -36,8 +37,8 @@ class NodeAddressIterator {
     // Mutable state
     private int index = 0;
 
-    public NodeAddressIterator(Node node, int sendBufferSize, int rcvBufferSize) throws UnknownHostException {
-        this(node, sendBufferSize, rcvBufferSize, resolve(node));
+    public NodeAddressIterator(Node node, int sendBufferSize, int rcvBufferSize, ClientDnsLookup clientDnsLookup) throws UnknownHostException {
+        this(node, sendBufferSize, rcvBufferSize, resolve(node, clientDnsLookup));
     }
 
     // constructor for testing
@@ -86,8 +87,14 @@ class NodeAddressIterator {
         index++;
     }
 
-    static InetAddress[] resolve(Node node) throws UnknownHostException {
-        return InetAddress.getAllByName(node.host());
+    private static InetAddress[] resolve(Node node, ClientDnsLookup clientDnsLookup) throws UnknownHostException {
+        if (clientDnsLookup == ClientDnsLookup.USE_ALL_DNS_IPS) {
+            return InetAddress.getAllByName(node.host());
+        } else {
+            InetAddress[] ret = new InetAddress[1];
+            ret[0] = InetAddress.getByName(node.host());
+            return ret;
+        }
     }
 
     @Override

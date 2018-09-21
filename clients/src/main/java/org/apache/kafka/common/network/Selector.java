@@ -16,6 +16,7 @@
  */
 package org.apache.kafka.common.network;
 
+import org.apache.kafka.clients.ClientDnsLookup;
 import org.apache.kafka.common.KafkaException;
 import org.apache.kafka.common.MetricName;
 import org.apache.kafka.common.Node;
@@ -128,6 +129,7 @@ public class Selector implements Selectable, AutoCloseable {
     //this is used to prevent tight loops when memory is not available to read any more data
     private boolean madeReadProgressLastPoll = true;
     private Map<String, NodeAddressIterator> addressIterators;
+    private ClientDnsLookup clientDnsLookup;
 
     /**
      * Create a new nioSelector
@@ -154,7 +156,8 @@ public class Selector implements Selectable, AutoCloseable {
             boolean recordTimePerConnection,
             ChannelBuilder channelBuilder,
             MemoryPool memoryPool,
-            LogContext logContext) {
+            LogContext logContext,
+            ClientDnsLookup clientDnsLookup) {
         try {
             this.nioSelector = java.nio.channels.Selector.open();
         } catch (IOException e) {
@@ -184,6 +187,7 @@ public class Selector implements Selectable, AutoCloseable {
         this.failedAuthenticationDelayMs = failedAuthenticationDelayMs;
         this.delayedClosingChannels = (failedAuthenticationDelayMs > NO_FAILED_AUTHENTICATION_DELAY) ? new LinkedHashMap<String, DelayedAuthenticationFailureClose>() : null;
         this.addressIterators = new HashMap<>();
+        this.clientDnsLookup = clientDnsLookup;
     }
 
     public Selector(int maxReceiveSize,
@@ -196,7 +200,7 @@ public class Selector implements Selectable, AutoCloseable {
                 boolean metricsPerConnection,
                 ChannelBuilder channelBuilder,
                 LogContext logContext) {
-        this(maxReceiveSize, connectionMaxIdleMs, failedAuthenticationDelayMs, metrics, time, metricGrpPrefix, metricTags, metricsPerConnection, false, channelBuilder, MemoryPool.NONE, logContext);
+        this(maxReceiveSize, connectionMaxIdleMs, failedAuthenticationDelayMs, metrics, time, metricGrpPrefix, metricTags, metricsPerConnection, false, channelBuilder, MemoryPool.NONE, logContext, ClientDnsLookup.DISABLED);
     }
 
 
@@ -208,16 +212,21 @@ public class Selector implements Selectable, AutoCloseable {
             Map<String, String> metricTags,
             boolean metricsPerConnection,
             ChannelBuilder channelBuilder,
-            LogContext logContext) {
+            LogContext logContext,
+            ClientDnsLookup clientDnsLookup) {
         this(maxReceiveSize, connectionMaxIdleMs, NO_FAILED_AUTHENTICATION_DELAY, metrics, time, metricGrpPrefix, metricTags, metricsPerConnection, channelBuilder, logContext);
     }
 
     public Selector(long connectionMaxIdleMS, Metrics metrics, Time time, String metricGrpPrefix, ChannelBuilder channelBuilder, LogContext logContext) {
-        this(NetworkReceive.UNLIMITED, connectionMaxIdleMS, metrics, time, metricGrpPrefix, Collections.emptyMap(), true, channelBuilder, logContext);
+        this(NetworkReceive.UNLIMITED, connectionMaxIdleMS, metrics, time, metricGrpPrefix, Collections.emptyMap(), true, channelBuilder, logContext, ClientDnsLookup.DISABLED);
     }
 
     public Selector(long connectionMaxIdleMS, int failedAuthenticationDelayMs, Metrics metrics, Time time, String metricGrpPrefix, ChannelBuilder channelBuilder, LogContext logContext) {
         this(NetworkReceive.UNLIMITED, connectionMaxIdleMS, failedAuthenticationDelayMs, metrics, time, metricGrpPrefix, Collections.<String, String>emptyMap(), true, channelBuilder, logContext);
+    }
+
+    public Selector(long connectionMaxIdleMS, Metrics metrics, Time time, String metricGrpPrefix, ChannelBuilder channelBuilder, LogContext logContext, ClientDnsLookup clientDnsLookup) {
+        this(NetworkReceive.UNLIMITED, connectionMaxIdleMS, metrics, time, metricGrpPrefix, Collections.emptyMap(), true, channelBuilder, logContext, clientDnsLookup);
     }
 
     /**
@@ -235,7 +244,7 @@ public class Selector implements Selectable, AutoCloseable {
      */
     @Override
     public void connect(Node node, int sendBufferSize, int receiveBufferSize) throws IOException {
-        connectImpl(new NodeAddressIterator(node, sendBufferSize, receiveBufferSize));
+        connectImpl(new NodeAddressIterator(node, sendBufferSize, receiveBufferSize, clientDnsLookup));
     }
 
     void connectImpl(NodeAddressIterator addrIter) throws IOException {

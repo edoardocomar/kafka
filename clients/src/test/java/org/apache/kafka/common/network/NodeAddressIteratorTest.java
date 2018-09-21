@@ -23,6 +23,7 @@ import static org.junit.Assert.fail;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
+import org.apache.kafka.clients.ClientDnsLookup;
 import org.apache.kafka.common.Node;
 import org.junit.Test;
 
@@ -60,7 +61,7 @@ public class NodeAddressIteratorTest {
     @Test(expected = UnknownHostException.class)
     public void testUnknownHostException() throws UnknownHostException {
         Node node = new Node(0, "some.invalid.hostname.foo.bar.local", 9092);
-        new NodeAddressIterator(node, 1024, 1024);
+        new NodeAddressIterator(node, 1024, 1024, ClientDnsLookup.DISABLED);
     }
 
 }

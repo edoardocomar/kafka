@@ -272,7 +272,7 @@ public class ConsumerConfig extends AbstractConfig {
                                 .define(CLIENT_DNS_LOOKUP,
                                         Type.STRING,
                                         ClientDnsLookup.DISABLED.toString(),
-                                        in(ClientDnsLookup.DISABLED.toString(), ClientDnsLookup.RESOLVE_CANONICAL_BOOTSTRAP_SERVERS_ONLY.toString()),
+                                        in(ClientDnsLookup.DISABLED.toString(), ClientDnsLookup.RESOLVE_CANONICAL_BOOTSTRAP_SERVERS_ONLY.toString(), ClientDnsLookup.USE_ALL_DNS_IPS.toString()),
                                         Importance.MEDIUM,
                                         CommonClientConfigs.CLIENT_DNS_LOOKUP_DOC)
                                 .define(GROUP_ID_CONFIG, Type.STRING, "", Importance.HIGH, GROUP_ID_DOC)
