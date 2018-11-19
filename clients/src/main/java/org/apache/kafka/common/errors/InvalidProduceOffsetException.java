@@ -17,7 +17,8 @@
 package org.apache.kafka.common.errors;
 
 /**
- * blah //EDO
+ * Thrown when the offset specified in a Produce request is smaller than the current Log End Offset
+ * @see org.apache.kafka.clients.producer.ProducerRecordWithOffset
  */
 public class InvalidProduceOffsetException extends InvalidOffsetException {
 

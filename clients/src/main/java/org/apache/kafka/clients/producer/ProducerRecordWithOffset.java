@@ -21,7 +21,7 @@ import java.util.OptionalLong;
 import org.apache.kafka.common.header.Header;
 
 /**
- * A {@link ProducerRecord} that a blah //EDO complete javadox
+ * A {@link ProducerRecord} that specifies an offset
  */
 public class ProducerRecordWithOffset<K, V> extends ProducerRecord<K, V> {
 

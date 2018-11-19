@@ -35,7 +35,7 @@ import org.apache.kafka.common.security.auth.SecurityProtocol
 import org.junit.Assert._
 import org.junit.{After, Before, Test}
 
-import scala.collection.mutable.Buffer
+import scala.collection.mutable.{Buffer, Map}
 import scala.concurrent.ExecutionException
 
 abstract class BaseProducerSendTest extends KafkaServerTestHarness {
@@ -196,13 +196,13 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
       createTopic(topic, 1, 2)
 
       val key = "key".getBytes(StandardCharsets.UTF_8)
-      val futures = scala.collection.mutable.Map[Long, Future[RecordMetadata]]()
+      val futures = Map[Long, Future[RecordMetadata]]()
       for (offset <- Array(100L, 111, 112, 113, 150, 151, 161, 162, 190, 200)) {
         val r = new ProducerRecordWithOffset[Array[Byte], Array[Byte]](topic, partition, null, key,
           s"$offset".getBytes(StandardCharsets.UTF_8),null, offset)
         futures += (offset -> producer.send(r))
         if (offset == 150)
-          futures.get(offset).get // force a batch to be sent
+          futures(offset).get // force a batch to be sent
       }
 
       // assert no exceptions and check offsets
