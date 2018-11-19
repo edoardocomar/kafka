@@ -939,21 +939,29 @@ public class RecordAccumulatorTest {
         RecordAccumulator accum = createTestRecordAccumulator(
                 batchSize + DefaultRecordBatch.RECORD_BATCH_OVERHEAD, 10 * 1024, CompressionType.NONE, 0L);
         accum.append(tp1, 0L, key, value, Record.EMPTY_HEADERS, OptionalLong.of(1000L), null, maxBlockTimeMs);
+        accum.append(tp1, 0L, key, value, Record.EMPTY_HEADERS, OptionalLong.of(1001L), null, maxBlockTimeMs);
         accum.append(tp1, 0L, key, value, Record.EMPTY_HEADERS, OptionalLong.of(1100L), null, maxBlockTimeMs);
 
         Deque<ProducerBatch> batches = accum.batches().get(tp1);
-        assertEquals(1, batches.size());
-        ProducerBatch producerBatch = batches.peek();
-        List<MutableRecordBatch> recordBatches = TestUtils.toList(producerBatch.records().batches());
-        assertEquals(1, recordBatches.size());
-        MutableRecordBatch recordBatch = recordBatches.get(0);
-        assertEquals(1000L, recordBatch.baseOffset());
-        List<Record> records = TestUtils.toList(recordBatch);
-        assertEquals(2, records.size());
-        Record record = records.get(0);
-        assertEquals(1000L, record.offset());
-        Record record2 = records.get(1);
-        assertEquals(1100L, record2.offset());
+        assertEquals(2, batches.size());
+        ProducerBatch producerBatch1 = batches.removeFirst();
+        List<MutableRecordBatch> recordBatches1 = TestUtils.toList(producerBatch1.records().batches());
+        assertEquals(1, recordBatches1.size());
+        MutableRecordBatch recordBatch1 = recordBatches1.get(0);
+        assertEquals(1000L, recordBatch1.baseOffset());
+        List<Record> records1 = TestUtils.toList(recordBatch1);
+        assertEquals(2, records1.size());
+        assertEquals(1000L, records1.get(0).offset());
+        assertEquals(1001L, records1.get(1).offset());
+
+        ProducerBatch producerBatch2 = batches.removeFirst();
+        List<MutableRecordBatch> recordBatches2 = TestUtils.toList(producerBatch2.records().batches());
+        assertEquals(1, recordBatches2.size());
+        MutableRecordBatch recordBatch2 = recordBatches2.get(0);
+        assertEquals(1100L, recordBatch2.baseOffset());
+        List<Record> records2 = TestUtils.toList(recordBatch2);
+        assertEquals(1, records2.size());
+        assertEquals(1100L, records2.get(0).offset());
     }
 
     @Test

@@ -195,32 +195,39 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
       // create topic
       createTopic(topic, 1, 2)
 
-      val record = new ProducerRecordWithOffset[Array[Byte], Array[Byte]](topic, partition, null, "key".getBytes(StandardCharsets.UTF_8),
-        "value".getBytes(StandardCharsets.UTF_8),null, 100)
-      val rm = producer.send(record).get(10, TimeUnit.SECONDS)
-      assertEquals(100, rm.offset)
-
+      val key = "key".getBytes(StandardCharsets.UTF_8)
       val futures = scala.collection.mutable.Map[Long, Future[RecordMetadata]]()
-      for (offset <- Array(110L, 120, 130, 140, 150, 160, 170, 180, 190, 200)) {
-        val r = new ProducerRecordWithOffset[Array[Byte], Array[Byte]](topic, partition, null, "key".getBytes(StandardCharsets.UTF_8),
-          "value".getBytes(StandardCharsets.UTF_8),null, offset)
+      for (offset <- Array(100L, 111, 112, 113, 150, 151, 161, 162, 190, 200)) {
+        val r = new ProducerRecordWithOffset[Array[Byte], Array[Byte]](topic, partition, null, key,
+          s"$offset".getBytes(StandardCharsets.UTF_8),null, offset)
         futures += (offset -> producer.send(r))
-        futures.get(150).map( f => f.get ) // force a batch to be sent
+        if (offset == 150)
+          futures.get(offset).get // force a batch to be sent
       }
 
       // assert no exceptions and check offsets
-      futures.map { case (offset, future) =>
+      futures.foreach { case (offset, future) =>
         val rm = future.get(10, TimeUnit.SECONDS)
         assertEquals(offset, rm.offset)
       }
 
       try {
+        val record = new ProducerRecordWithOffset[Array[Byte], Array[Byte]](topic, partition, null, key,
+          null,null, 112)
         producer.send(record).get(10, TimeUnit.SECONDS)
         fail("expecting InvalidProduceOffsetException")
       } catch {
         case ee : ExecutionException =>
           assertEquals(classOf[InvalidProduceOffsetException], ee.getCause.getClass)
           assertEquals(201, ee.getCause.asInstanceOf[InvalidProduceOffsetException].getLogEndOffset)
+      }
+
+      consumer.assign(List(new TopicPartition(topic, partition)).asJava)
+      val records = TestUtils.consumeRecords(consumer, 10)
+
+      records.foreach { record =>
+        assertEquals(new String(record.value).toLong, record.offset)
+        assertEquals(new String(key), new String(record.key))
       }
 
     } finally {

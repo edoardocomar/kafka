@@ -126,7 +126,7 @@ class TransactionsTest extends KafkaServerTestHarness {
       producer.send(r)
       fail("IllegalArgumentException expected")
     } catch {
-      case e: IllegalArgumentException => // expected
+      case _: IllegalArgumentException => // expected
     }
   }
 

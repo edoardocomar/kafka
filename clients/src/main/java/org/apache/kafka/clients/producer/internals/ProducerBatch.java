@@ -105,7 +105,8 @@ public final class ProducerBatch {
     /**
      * Append the record to the current record set and return the relative offset within that record set
      *
-     * @return The RecordSend corresponding to this record or null if there isn't sufficient room.
+     * @return The RecordSend corresponding to this record or null if a new batch needs to be created because of not enough room in
+     * current batch or record offset is not sequential.
      */
     public FutureRecordMetadata tryAppend(long timestamp, byte[] key, byte[] value, Header[] headers, OptionalLong offset, Callback callback, long now) {
         if (!recordsBuilder.hasRoomFor(timestamp, key, value, headers)) {

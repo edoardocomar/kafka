@@ -232,18 +232,18 @@ public class ProducerBatchTest {
     public void testSplitPreservesOffset() throws ExecutionException, InterruptedException {
         // Create a big batch
         ByteBuffer buffer = ByteBuffer.allocate(8192);
-        MemoryRecordsBuilder builder = MemoryRecords.builder(buffer, CompressionType.NONE, TimestampType.CREATE_TIME, 900L);
+        MemoryRecordsBuilder builder = MemoryRecords.builder(buffer, CompressionType.NONE, TimestampType.CREATE_TIME, 1000L);
         ProducerBatch batch = new ProducerBatch(new TopicPartition("topic", 1), builder, now, true);
 
         // Append two messages so the batch is too big.
         byte[] value = new byte[1024];
         batch.tryAppend(now, null, value, Record.EMPTY_HEADERS, OptionalLong.of(1000L), null, now);
-        batch.tryAppend(now, null, value, Record.EMPTY_HEADERS, OptionalLong.of(1100L), null, now);
-        batch.tryAppend(now, null, value, Record.EMPTY_HEADERS, OptionalLong.of(1200L), null, now);
-        batch.tryAppend(now, null, value, Record.EMPTY_HEADERS, OptionalLong.of(1300L), null, now);
+        batch.tryAppend(now, null, value, Record.EMPTY_HEADERS, OptionalLong.of(1001L), null, now);
+        batch.tryAppend(now, null, value, Record.EMPTY_HEADERS, OptionalLong.of(1002L), null, now);
+        batch.tryAppend(now, null, value, Record.EMPTY_HEADERS, OptionalLong.of(1003L), null, now);
         batch.close();
 
-        assertEquals(900L, batch.records().batchIterator().peek().baseOffset());
+        assertEquals(1000L, batch.records().batchIterator().peek().baseOffset());
 
         // Split the batch.
         Deque<ProducerBatch> splits = batch.split(2300);
@@ -254,16 +254,16 @@ public class ProducerBatchTest {
         assertEquals(1000L, batch1.records().batchIterator().peek().baseOffset());
         ProducerBatch batch2 = splits.getLast();
         assertEquals(2, batch2.recordCount);
-        assertEquals(1200L, batch2.records().batchIterator().peek().baseOffset());
+        assertEquals(1002L, batch2.records().batchIterator().peek().baseOffset());
 
         long expectedRecordOffset = 1000;
         for (Record r : batch1.records().records()) {
             assertEquals(expectedRecordOffset, r.offset());
-            expectedRecordOffset += 100;
+            expectedRecordOffset += 1;
         }
         for (Record r : batch2.records().records()) {
             assertEquals(expectedRecordOffset, r.offset());
-            expectedRecordOffset += 100;
+            expectedRecordOffset += 1;
         }
 
     }
