@@ -198,7 +198,7 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
       val record = new ProducerRecordWithOffset[Array[Byte], Array[Byte]](topic, partition, null, "key".getBytes(StandardCharsets.UTF_8),
         "value".getBytes(StandardCharsets.UTF_8),null, 100)
       val rm = producer.send(record).get(10, TimeUnit.SECONDS)
-      assertFalse(s"Should not have set offset but got ${rm.offset}", rm.hasOffset)
+      assertEquals(100, rm.offset)
 
       val futures = scala.collection.mutable.Map[Long, Future[RecordMetadata]]()
       for (offset <- Array(110L, 120, 130, 140, 150, 160, 170, 180, 190, 200)) {

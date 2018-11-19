@@ -110,6 +110,8 @@ public final class ProducerBatch {
     public FutureRecordMetadata tryAppend(long timestamp, byte[] key, byte[] value, Header[] headers, OptionalLong offset, Callback callback, long now) {
         if (!recordsBuilder.hasRoomFor(timestamp, key, value, headers)) {
             return null;
+        } else if (offset.isPresent() && offset.getAsLong() > recordsBuilder.nextSequentialOffset()) {
+            return null;
         } else {
             Long checksum = offset.isPresent() ? 
                     this.recordsBuilder.appendWithOffset(offset.getAsLong(), timestamp, key, value, headers) :

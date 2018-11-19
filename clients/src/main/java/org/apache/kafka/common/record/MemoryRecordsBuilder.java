@@ -770,7 +770,7 @@ public class MemoryRecordsBuilder {
         return magic;
     }
 
-    private long nextSequentialOffset() {
+    public long nextSequentialOffset() {
         return lastOffset == null ? baseOffset : lastOffset + 1;
     }
 
