@@ -200,20 +200,18 @@ abstract class BaseProducerSendTest extends KafkaServerTestHarness {
       val rm = producer.send(record).get(10, TimeUnit.SECONDS)
       assertFalse(s"Should not have set offset but got ${rm.offset}", rm.hasOffset)
 
-      val futures = Buffer[Future[RecordMetadata]]()
-      for (off <- Array(110, 120, 130, 140, 150, 160, 170, 180, 190, 200)) {
+      val futures = scala.collection.mutable.Map[Long, Future[RecordMetadata]]()
+      for (offset <- Array(110L, 120, 130, 140, 150, 160, 170, 180, 190, 200)) {
         val r = new ProducerRecordWithOffset[Array[Byte], Array[Byte]](topic, partition, null, "key".getBytes(StandardCharsets.UTF_8),
-          "value".getBytes(StandardCharsets.UTF_8),null, off)
-        futures += producer.send(r)
-        if (off == 150) { // force a batch to be sent
-          futures.last.get
-        }
+          "value".getBytes(StandardCharsets.UTF_8),null, offset)
+        futures += (offset -> producer.send(r))
+        futures.get(150).map( f => f.get ) // force a batch to be sent
       }
 
-      // assert no exceptions and no offsets
-      futures.map { f =>
-        val rm = f.get(10, TimeUnit.SECONDS)
-        assertFalse(s"Should not have set offset but got ${rm.offset}", rm.hasOffset)
+      // assert no exceptions and check offsets
+      futures.map { case (offset, future) =>
+        val rm = future.get(10, TimeUnit.SECONDS)
+        assertEquals(offset, rm.offset)
       }
 
       try {

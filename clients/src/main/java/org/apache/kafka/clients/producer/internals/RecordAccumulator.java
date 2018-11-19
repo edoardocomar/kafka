@@ -87,7 +87,7 @@ public final class RecordAccumulator {
     private int drainIndex;
     private final TransactionManager transactionManager;
     private long nextBatchExpiryTimeMs = Long.MAX_VALUE; // the earliest time (absolute) a batch will expire.
-    private final AtomicReference<Boolean> useOffsets = new AtomicReference<Boolean>(null);
+    private final AtomicReference<Boolean> useOffsets = new AtomicReference<>(null);
 
     /**
      * Create a new record accumulator
