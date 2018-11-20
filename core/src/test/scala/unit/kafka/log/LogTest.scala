@@ -2871,8 +2871,8 @@ class LogTest {
     }
     assertFalse(recordsIter.hasNext())
 
-    //appending a batch of messages as a leader with given offsets starting at 2000 by 10
-    val offsets = (2000L until 2500L by 10L).toArray
+    //appending a batch of messages as a leader with given offsets starting at 2000
+    val offsets = (2000L until 2050L).toArray
     val memoryRecords = TestUtils.recordsWithOffset(records, offsets, baseOffset = 2000L)
     log.appendAsLeader(memoryRecords,
         leaderEpoch = epoch,
@@ -2880,7 +2880,7 @@ class LogTest {
         assignOffsets = false)
 
     // read all at once
-    val read = readLog(log, 2000, 100000, Some(2500)).records
+    val read = readLog(log, 2000, 100000, Some(2050)).records
 
     // check batch base offset and epoch
     val batchesIter = read.batches.asScala
