@@ -27,6 +27,7 @@ import java.util.concurrent.atomic._
 import java.util.concurrent.{ConcurrentNavigableMap, ConcurrentSkipListMap, TimeUnit}
 import java.util.regex.Pattern
 
+import com.fasterxml.jackson.core.io.CharTypes
 import com.yammer.metrics.core.Gauge
 import kafka.api.KAFKA_0_10_0_IV0
 import kafka.common.{LogSegmentOffsetOverflowException, LongRef, OffsetsOutOfOrderException, UnexpectedAppendOffsetException}
@@ -1061,9 +1062,20 @@ class Log(@volatile var dir: File,
 
     for (batch <- records.batches.asScala) {
       // we only validate V2 and higher to avoid potential compatibility issues with older clients
-      if (batch.magic >= RecordBatch.MAGIC_VALUE_V2 && isFromClient && batch.baseOffset != 0 && assignOffsets)
-        throw new InvalidRecordException(s"The baseOffset of the record batch in the append to $topicPartition should " +
-          s"be 0, but it is ${batch.baseOffset}")
+      if (batch.magic >= RecordBatch.MAGIC_VALUE_V2 && isFromClient) {
+
+        if (assignOffsets) {
+          if (batch.baseOffset != 0) {
+            throw new InvalidRecordException(s"The baseOffset of the record batch in the append to $topicPartition should " +
+              s"be 0, but it is ${batch.baseOffset}")
+          }
+        } else {
+          if (batch.lastOffset() - batch.baseOffset() != batch.countOrNull() - 1) {
+            throw new CorruptRecordException(s"Invalid batch for $topicPartition: Base Offset: ${batch.baseOffset} " +
+              s"Last Offset: ${batch.lastOffset} Record count: ${batch.countOrNull}")
+          }
+        }
+      }
 
       // update the first offset if on the first message. For magic versions older than 2, we use the last offset
       // to avoid the need to decompress the data (the last offset can be obtained directly from the wrapper message).
