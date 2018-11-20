@@ -25,7 +25,7 @@ import kafka.utils.TestUtils
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.protocol.{ApiKeys, Errors}
 import org.apache.kafka.common.record._
-import org.apache.kafka.common.requests.{ProduceRequest, ProduceResponse}
+import org.apache.kafka.common.requests.{InitProducerIdRequest, InitProducerIdResponse, ProduceRequest, ProduceResponse}
 import org.junit.Assert._
 import org.junit.Test
 
@@ -84,6 +84,57 @@ class ProduceRequestTest extends BaseRequestTest {
 
     sendAndCheck(partition, leader, MemoryRecords.withRecords(2000, CompressionType.NONE, sr), useOffsets = true,
       expectedBaseOffset = -1, expectedLSO = -1, expectedLEO = 2003, expectedError = Errors.INVALID_PRODUCE_OFFSET)
+  }
+
+  @Test
+  def testIdempotentProduceRequestWithOffsetBatchNoGaps() {
+    val (partition, leader) = createTopicAndFindPartitionWithLeader("topic")
+
+    val initPidRequest = new InitProducerIdRequest.Builder(null).build()
+    val initPidResponse = InitProducerIdResponse.parse(
+      connectAndSend(initPidRequest, ApiKeys.INIT_PRODUCER_ID), initPidRequest.version)
+
+    val simpleRecords = (0 until 10).toArray.map(id => sr)
+    val offsets = (2000L until 2010L).toArray
+    val memoryRecordsWithOffsets = TestUtils.recordsWithOffset(simpleRecords, offsets,
+      producerId = initPidResponse.producerId, producerEpoch = initPidResponse.epoch,
+      sequence=0, baseOffset = 2000L)
+    sendAndCheck(partition, leader,
+      memoryRecordsWithOffsets,
+      useOffsets = true,
+      expectedBaseOffset = 2000L,
+      expectedLSO = 0L,
+      expectedLEO = 2010L)
+
+    sendAndCheck(partition, leader,
+      MemoryRecords.withIdempotentRecords(CompressionType.NONE,
+        initPidResponse.producerId, initPidResponse.epoch,
+        10, sr),
+      expectedBaseOffset = 2010L,
+      expectedLSO = 0L,
+      expectedLEO = 2011L)
+  }
+
+  @Test
+  def testIdempotentProduceRequestWithOffsetBatchWithGaps() {
+    val (partition, leader) = createTopicAndFindPartitionWithLeader("topic")
+
+    val initPidRequest = new InitProducerIdRequest.Builder(null).build()
+    val initPidResponse = InitProducerIdResponse.parse(
+      connectAndSend(initPidRequest, ApiKeys.INIT_PRODUCER_ID), initPidRequest.version)
+
+    val simpleRecords = (0 until 10 by 2).toArray.map(id => sr)
+    val offsets = (2000L until 2010L by 2).toArray
+    val memoryRecordsWithOffsets = TestUtils.recordsWithOffset(simpleRecords, offsets,
+      producerId = initPidResponse.producerId, producerEpoch = initPidResponse.epoch,
+      sequence=0, baseOffset = 2000L)
+    sendAndCheck(partition, leader,
+      memoryRecordsWithOffsets,
+      useOffsets = true,
+      expectedBaseOffset = -1L,
+      expectedLSO = -1L,
+      expectedLEO = -1L,
+      expectedError = Errors.CORRUPT_MESSAGE)
   }
 
   @Test
