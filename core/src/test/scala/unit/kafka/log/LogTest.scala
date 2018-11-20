@@ -2908,6 +2908,18 @@ class LogTest {
     } catch {
       case _: InvalidProduceOffsetException => // this is good
     }
+
+    // check failure on append batch with offsets gaps
+    try {
+      val offsets = (3000L until 3050L by 10).toArray
+      val memoryRecords = TestUtils.recordsWithOffset(records, offsets, baseOffset = 3000L)
+      log.appendAsLeader(memoryRecords,
+        leaderEpoch = epoch,
+        isFromClient = true,
+        assignOffsets = false)
+    } catch {
+      case _: CorruptRecordException => //expected
+    }
   }
 
   @Test
