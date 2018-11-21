@@ -131,7 +131,7 @@ public class ProduceResponse extends AbstractResponse {
      * Add in the log_start_offset field to the partition response to filter out spurious OutOfOrderSequencExceptions
      * on the client.
      */
-    public static final Schema PRODUCE_RESPONSE_V5 = new Schema(
+    private static final Schema PRODUCE_RESPONSE_V5 = new Schema(
             new Field(RESPONSES_KEY_NAME, new ArrayOf(new Schema(
                     TOPIC_NAME,
                     new Field(PARTITION_RESPONSES_KEY_NAME, new ArrayOf(new Schema(
@@ -158,7 +158,7 @@ public class ProduceResponse extends AbstractResponse {
     /**
      * V8 introduces producer offsets
      */
-    public static final Schema PRODUCE_RESPONSE_V8 = new Schema(
+    private static final Schema PRODUCE_RESPONSE_V8 = new Schema(
             new Field(RESPONSES_KEY_NAME, new ArrayOf(new Schema(
                     TOPIC_NAME,
                     new Field(PARTITION_RESPONSES_KEY_NAME, new ArrayOf(new Schema(
