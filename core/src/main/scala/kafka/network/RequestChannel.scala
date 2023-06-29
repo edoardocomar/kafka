@@ -244,7 +244,9 @@ object RequestChannel extends Logging {
         m.responseSendTimeHist.update(Math.round(responseSendTimeMs))
         m.totalTimeHist.update(Math.round(totalTimeMs))
         m.requestBytesHist.update(sizeOfBodyInBytes)
-        m.messageConversionsTimeHist.ifPresent(_.update(Math.round(messageConversionsTimeMs)))
+        if (messageConversionsTimeNanos > 0) {
+          m.messageConversionsTimeHist.ifPresent(_.update(Math.round(messageConversionsTimeMs)))
+        }
         m.tempMemoryBytesHist.ifPresent(_.update(temporaryMemoryBytes))
       }
 
