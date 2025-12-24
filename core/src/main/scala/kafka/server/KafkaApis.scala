@@ -669,9 +669,9 @@ class KafkaApis(val requestChannel: RequestChannel,
             if (topicResponse.topic != null) {
               val tp = new TopicIdPartition(topicResponse.topicId, new TopicPartition(topicResponse.topic, data.partitionIndex))
               // do not recreate the metrics if this was a DelayedFetch executed after a topic was deleted
-              if (data.errorCode != Errors.UNKNOWN_TOPIC_OR_PARTITION.code) {
-                brokerTopicStats.updateBytesOut(tp.topic, fetchRequest.isFromFollower, reassigningPartitions.contains(tp), FetchResponse.recordsSize(data))
-              }
+              //KAFKA-5238 if (data.errorCode != Errors.UNKNOWN_TOPIC_OR_PARTITION.code) {
+              brokerTopicStats.updateBytesOut(tp.topic, fetchRequest.isFromFollower, reassigningPartitions.contains(tp), FetchResponse.recordsSize(data))
+              //KAFKA-5238 }
             }
           }
         }

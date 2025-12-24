@@ -80,18 +80,21 @@ class MetricsTest extends KafkaServerTestHarness with Logging {
     assertEquals(Set.empty, topicMetricGroups(topic), "Topic metrics exists after deleteTopic")
   }
 
-  @Test
-  def testBrokerTopicMetricsUnregisteredAfterDeletingTopicWithDelayedFetches(): Unit = {
+  @ParameterizedTest(name = TestInfoUtils.TestWithParameterizedGroupProtocolNames)
+  @MethodSource(Array("getTestGroupProtocolParametersAll"))
+  def testBrokerTopicMetricsUnregisteredAfterDeletingTopicWithDelayedFetches(groupProtocol: String): Unit = {
     val topic = "test-broker-topic-metric"
-    createTopic(topic, 2, 1)
+    createTopic(topic, 2)
     // Produce a few messages and consume them to create the metrics
     // Do consume messages
     TestUtils.generateAndProduceMessages(brokers, topic, nMessages)
-    TestUtils.consumeTopicRecords(brokers, topic, nMessages)
+    TestUtils.consumeTopicRecords(brokers, topic, nMessages, GroupProtocol.of(groupProtocol))
     assertTrue(topicMetricGroups(topic).nonEmpty, "Topic metrics don't exist")
     brokers.foreach(b => assertNotNull(b.brokerTopicStats.topicStats(topic)))
     deleteTopic(topic)
     TestUtils.verifyTopicDeletion(topic, 1, brokers)
+    // the following check used to fail without the patch to KafkaApis
+    assertEquals(Set.empty, topicMetricGroups(topic), "Topic metrics exists after deleteTopic")
     TestUtils.waitUntilTrue(() => topicMetricGroups(topic).isEmpty, "Topic metrics still exists after deleteTopic");
   }
 
