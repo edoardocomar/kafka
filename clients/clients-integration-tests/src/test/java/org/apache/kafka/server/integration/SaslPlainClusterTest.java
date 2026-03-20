@@ -14,7 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package kafka.server.integration;
+package org.apache.kafka.server.integration;
 
 import org.apache.kafka.clients.CommonClientConfigs;
 import org.apache.kafka.clients.admin.Admin;
@@ -30,7 +30,7 @@ import org.apache.kafka.common.test.api.ClusterTemplate;
 import org.apache.kafka.common.test.api.TestKitDefaults;
 import org.apache.kafka.common.test.api.Type;
 import org.apache.kafka.network.SocketServerConfigs;
-import org.apache.kafka.server.config.KRaftConfigs;
+import org.apache.kafka.raft.KRaftConfigs;
 import org.apache.kafka.server.config.ReplicationConfigs;
 import org.junit.jupiter.api.Assertions;
 
