@@ -40,6 +40,7 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Scanner;
@@ -52,6 +53,14 @@ public class ProducerPerformance {
 
     public static final String DEFAULT_TRANSACTION_ID_PREFIX = "performance-producer-";
     public static final long DEFAULT_TRANSACTION_DURATION_MS = 3000L;
+
+    public enum KeyDistribution {
+        NONE, RANGE, RANDOM;
+
+        public static KeyDistribution fromString(String value) {
+            return KeyDistribution.valueOf(value.toUpperCase(Locale.ROOT));
+        }
+    }
 
     public static void main(String[] args) throws Exception {
         ProducerPerformance perf = new ProducerPerformance();
@@ -91,13 +100,14 @@ public class ProducerPerformance {
             for (long i = 0; i < config.numRecords; i++) {
 
                 payload = generateRandomPayload(config.recordSize, config.payloadByteList, payload, random, config.payloadMonotonic, i);
+                byte[] key = generateKey(config.keyDistribution, config.messageKeyRange, random, i);
 
                 if (config.transactionsEnabled && currentTransactionSize == 0) {
                     producer.beginTransaction();
                     transactionStartTime = System.currentTimeMillis();
                 }
 
-                record = new ProducerRecord<>(config.topicName, payload);
+                record = new ProducerRecord<>(config.topicName, key, payload);
 
                 long sendStartMs = System.currentTimeMillis();
                 if ((isSteadyState = config.warmupRecords > 0) && i == config.warmupRecords) {
@@ -167,6 +177,14 @@ public class ProducerPerformance {
     Stats stats;
     Stats steadyStateStats;
 
+    static byte[] generateKey(KeyDistribution distribution, Integer keyRange, SplittableRandom random, long recordIndex) {
+        return switch (distribution) {
+            case NONE -> null;
+            case RANGE -> Integer.toString((int) (recordIndex % keyRange)).getBytes(StandardCharsets.UTF_8);
+            case RANDOM -> Integer.toString(random.nextInt(keyRange)).getBytes(StandardCharsets.UTF_8);
+        };
+    }
+
     static byte[] generateRandomPayload(Integer recordSize, List<byte[]> payloadByteList, byte[] payload,
             SplittableRandom random, boolean payloadMonotonic, long recordValue) {
         if (!payloadByteList.isEmpty()) {
@@ -225,6 +243,32 @@ public class ProducerPerformance {
 
         }
         return payloadByteList;
+    }
+
+    private static void addKeyDistributionArgs(ArgumentParser parser) {
+        parser.addArgument("--key-distribution")
+                .action(store())
+                .required(false)
+                .type(String.class)
+                .choices("none", "range", "random")
+                .metavar("KEY-DISTRIBUTION")
+                .dest("keyDistribution")
+                .setDefault("none")
+                .help("The distribution to use for generating record keys. " +
+                        "'none' produces records with null keys (the default). " +
+                        "'range' cycles keys through integers 0, 1, ..., KEY-RANGE-1 in round-robin order. " +
+                        "'random' picks a random integer from [0, KEY-RANGE) for each record. " +
+                        "Keys are serialized as their decimal string representation encoded in UTF-8. " +
+                        "When set to 'range' or 'random', --message-key-range is required.");
+
+        parser.addArgument("--message-key-range")
+                .action(store())
+                .required(false)
+                .type(Integer.class)
+                .metavar("KEY-RANGE")
+                .dest("messageKeyRange")
+                .help("The size of the key space when --key-distribution is 'range' or 'random'. " +
+                        "Must be a positive integer. Ignored when --key-distribution is 'none'.");
     }
 
     /** Get the command-line argument parser. */
@@ -303,6 +347,7 @@ public class ProducerPerformance {
                 .setDefault("\\n")
                 .help("Provides the delimiter to be used when --payload-file is provided. Defaults to new line. " +
                         "Note that this parameter will be ignored if --payload-file is not provided.");
+        addKeyDistributionArgs(parser);
 
         parser.addArgument("--throughput")
                 .action(store())
@@ -579,6 +624,8 @@ public class ProducerPerformance {
         final boolean transactionsEnabled;
         final List<byte[]> payloadByteList;
         final long reportingInterval;
+        final KeyDistribution keyDistribution;
+        final Integer messageKeyRange;
 
         public ConfigPostProcessor(ArgumentParser parser, String[] args) throws IOException, ArgumentParserException {
             Namespace namespace = parser.parseArgs(args);
@@ -622,6 +669,20 @@ public class ProducerPerformance {
             }
             if (reportingInterval <= 0) {
                 throw new ArgumentParserException("--reporting-interval should be greater than zero.", parser);
+            }
+
+            this.keyDistribution = KeyDistribution.fromString(namespace.getString("keyDistribution"));
+            this.messageKeyRange = namespace.getInt("messageKeyRange");
+            if (keyDistribution != KeyDistribution.NONE && messageKeyRange == null) {
+                throw new ArgumentParserException(
+                        "--message-key-range is required when --key-distribution is 'range' or 'random'.", parser);
+            }
+            if (keyDistribution == KeyDistribution.NONE && messageKeyRange != null) {
+                throw new ArgumentParserException(
+                        "--key-distribution must be 'range' or 'random' when --message-key-range is specified.", parser);
+            }
+            if (messageKeyRange != null && messageKeyRange <= 0) {
+                throw new ArgumentParserException("--message-key-range should be greater than zero.", parser);
             }
 
             // since default value gets printed with the help text, we are escaping \n there and replacing it with correct value here.
