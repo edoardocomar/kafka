@@ -280,9 +280,14 @@ class SharedServer(
 
         val externalKRaftMetrics = new DefaultExternalKRaftMetrics(Option(brokerMetrics), Option(controllerServerMetrics))
 
+        val raftManagerConfig = if (sharedServerConfig.processRoles.contains(ProcessRole.ControllerRole)) {
+          controllerConfig
+        } else {
+          brokerConfig
+        }
         val _raftManager = new KafkaRaftManager[ApiMessageAndVersion](
           clusterId,
-          sharedServerConfig,
+          raftManagerConfig,
           metaPropsEnsemble.logDirProps.get(metaPropsEnsemble.metadataLogDir.get).directoryId.get,
           new MetadataRecordSerde,
           KafkaRaftServer.MetadataPartition,
