@@ -30,6 +30,7 @@ import kafka.utils.Logging
 import org.apache.kafka.clients.{ApiVersions, ManualMetadataUpdater, MetadataRecoveryStrategy, NetworkClient}
 import org.apache.kafka.common.KafkaException
 import org.apache.kafka.common.Node
+import org.apache.kafka.common.Reconfigurable
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.Uuid
 import org.apache.kafka.common.metrics.Metrics
@@ -248,6 +249,12 @@ class KafkaRaftManager[T](
       time,
       logContext
     )
+
+    channelBuilder match {
+      case reconfigurable: Reconfigurable =>
+        config.addReconfigurable(reconfigurable)
+      case _ =>
+    }
 
     val metricGroupPrefix = "raft-channel"
     val collectPerConnectionMetrics = false
