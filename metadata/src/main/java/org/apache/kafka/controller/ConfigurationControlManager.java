@@ -211,6 +211,7 @@ public class ConfigurationControlManager {
         List<ApiMessageAndVersion> outputRecords
     ) {
         List<ApiMessageAndVersion> newRecords = new ArrayList<>();
+        List<String> explicitlyDeletedConfigs = new ArrayList<>();
         for (Entry<String, Entry<OpType, String>> keysToOpsEntry : keysToOps.entrySet()) {
             String key = keysToOpsEntry.getKey();
             String currentValue = null;
@@ -228,6 +229,7 @@ public class ConfigurationControlManager {
                     break;
                 case DELETE:
                     newValue = null;
+                    explicitlyDeletedConfigs.add(key);
                     break;
                 case APPEND:
                 case SUBTRACT:
@@ -260,7 +262,7 @@ public class ConfigurationControlManager {
                     setValue(newValue), (short) 0));
             }
         }
-        ApiError error = validateAlterConfig(configResource, newRecords, Collections.emptyList(), newlyCreatedResource);
+        ApiError error = validateAlterConfig(configResource, newRecords, Collections.emptyList(), explicitlyDeletedConfigs, newlyCreatedResource);
         if (error.isFailure()) {
             return error;
         }
@@ -271,6 +273,7 @@ public class ConfigurationControlManager {
     private ApiError validateAlterConfig(ConfigResource configResource,
                                          List<ApiMessageAndVersion> recordsExplicitlyAltered,
                                          List<ApiMessageAndVersion> recordsImplicitlyDeleted,
+                                         List<String> explicitlyDeletedConfigs,
                                          boolean newlyCreatedResource) {
         Map<String, String> allConfigs = new HashMap<>();
         Map<String, String> existingConfigsMap = new HashMap<>();
@@ -289,6 +292,7 @@ public class ConfigurationControlManager {
             }
             alteredConfigsForAlterConfigPolicyCheck.put(configRecord.name(), configRecord.value());
         }
+        explicitlyDeletedConfigs.forEach(config -> alteredConfigsForAlterConfigPolicyCheck.put(config, null));
         for (ApiMessageAndVersion recordImplicitlyDeleted : recordsImplicitlyDeleted) {
             ConfigRecord configRecord = (ConfigRecord) recordImplicitlyDeleted.message();
             allConfigs.remove(configRecord.name());
@@ -376,7 +380,7 @@ public class ConfigurationControlManager {
                     setValue(null), (short) 0));
             }
         }
-        ApiError error = validateAlterConfig(configResource, recordsExplicitlyAltered, recordsImplicitlyDeleted, newlyCreatedResource);
+        ApiError error = validateAlterConfig(configResource, recordsExplicitlyAltered, recordsImplicitlyDeleted, Collections.emptyList(), newlyCreatedResource);
         if (error.isFailure()) {
             outputResults.put(configResource, error);
             return;
