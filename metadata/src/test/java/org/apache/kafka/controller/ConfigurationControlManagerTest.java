@@ -36,6 +36,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
 import java.util.AbstractMap.SimpleImmutableEntry;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -357,19 +358,18 @@ public class ConfigurationControlManagerTest {
             }
         };
         ConfigurationControlManager manager = new ConfigurationControlManager.Builder().
-            setFeatureControl(createFeatureControlManager()).
             setKafkaConfigSchema(SCHEMA).
-            setMaxRecordsPerBatch(KRaftConfigs.CONTROLLER_MAX_RECORDS_PER_BATCH_DEFAULT).
             setAlterConfigPolicy(Optional.of(policy)).
             build();
 
         assertEquals(ApiError.NONE, manager.incrementalAlterConfig(
-            MYTOPIC, toMap(entry("abc", entry(DELETE, null))), false, false).response());
+            MYTOPIC, toMap(entry("abc", entry(DELETE, null))), false).response());
         assertEquals(ApiError.NONE, manager.incrementalAlterConfig(
-            BROKER0, toMap(entry("foo.bar", entry(DELETE, null))), false, false).response());
-        assertEquals(List.of(
-            new RequestMetadata(MYTOPIC, toMap(entry("abc", null))),
-            new RequestMetadata(BROKER0, toMap(entry("foo.bar", null)))), validations);
+            BROKER0, toMap(entry("foo.bar", entry(DELETE, null))), false).response());
+        List<RequestMetadata> expected = new ArrayList<>();
+        expected.add(new RequestMetadata(MYTOPIC, toMap(entry("abc", null))));
+        expected.add(new RequestMetadata(BROKER0, toMap(entry("foo.bar", null))));
+        assertEquals(expected, validations);
     }
 
     private static class CheckForNullValuesPolicy implements AlterConfigPolicy {
